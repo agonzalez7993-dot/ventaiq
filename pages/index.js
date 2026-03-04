@@ -28,15 +28,6 @@ async function sbFetch(table, params = "limit=100") {
   if (!r.ok) throw new Error(`${table}: HTTP ${r.status}`);
   return r.json();
 }
-
-async function sbCount(table) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&limit=1`, {
-    headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, Accept: "application/json", Prefer: "count=exact" },
-  });
-  const range = r.headers.get("content-range");
-  const total = range?.split("/")?.[1];
-  return total && total !== "*" ? parseInt(total) : "?";
-}
 }
 
 function tryParseBlock(jsonStr) {
