@@ -24,22 +24,68 @@ async function sbFetch(table) {
   return r.json();
 }
 
+function tryParseBlock(jsonStr) {
+  try {
+    const j = JSON.parse(jsonStr.trim());
+    if (j.table) return { type: "table", data: j.table };
+    if (j.metrics) return { type: "metrics", data: j.metrics };
+  } catch (_) {}
+  return null;
+}
+
 function parseAIResponse(text) {
   const blocks = [];
-  const parts = text.split(/<<<JSON>>>/);
-  parts.forEach((part, i) => {
-    if (i % 2 === 0) {
-      const clean = part.replace(/<<<END>>>/g, "").trim();
-      if (clean) blocks.push({ type: "text", content: clean });
-    } else {
-      const jsonStr = part.split("<<<END>>>")[0].trim();
-      try {
-        const j = JSON.parse(jsonStr);
-        if (j.table) blocks.push({ type: "table", data: j.table });
-        if (j.metrics) blocks.push({ type: "metrics", data: j.metrics });
-      } catch (_) {}
-    }
-  });
+
+  // Strategy 1: explicit <<<JSON>>> ... <<<END>>> markers
+  if (text.includes("<<<JSON>>>")) {
+    const parts = text.split(/<<<JSON>>>/);
+    parts.forEach((part, i) => {
+      if (i % 2 === 0) {
+        const clean = part.replace(/<<<END>>>/g, "").trim();
+        if (clean) blocks.push({ type: "text", content: clean });
+      } else {
+        const jsonStr = part.split("<<<END>>>")[0].trim();
+        const parsed = tryParseBlock(jsonStr);
+        if (parsed) blocks.push(parsed);
+      }
+    });
+    return blocks;
+  }
+
+  // Strategy 2: ```json ... ``` code blocks
+  if (text.includes("```json") || text.includes("```")) {
+    const parts = text.split(/```(?:json)?/);
+    parts.forEach((part, i) => {
+      if (i % 2 === 0) {
+        const clean = part.trim();
+        if (clean) blocks.push({ type: "text", content: clean });
+      } else {
+        const jsonStr = part.replace(/```$/, "").trim();
+        const parsed = tryParseBlock(jsonStr);
+        if (parsed) blocks.push(parsed);
+        else blocks.push({ type: "text", content: "```\n" + jsonStr + "\n```" });
+      }
+    });
+    return blocks;
+  }
+
+  // Strategy 3: inline JSON objects {"table":...} or {"metrics":...}
+  const inlineRegex = /(\{(?:"table"|"metrics")[\s\S]*?\})\s*(?=\n|$)/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = inlineRegex.exec(text)) !== null) {
+    const before = text.slice(lastIndex, match.index).trim();
+    if (before) blocks.push({ type: "text", content: before });
+    const parsed = tryParseBlock(match[1]);
+    if (parsed) blocks.push(parsed);
+    else blocks.push({ type: "text", content: match[1] });
+    lastIndex = match.index + match[0].length;
+  }
+  const remaining = text.slice(lastIndex).trim();
+  if (remaining) blocks.push({ type: "text", content: remaining });
+
+  // Fallback: pure text
+  if (blocks.length === 0) blocks.push({ type: "text", content: text });
   return blocks;
 }
 
@@ -212,20 +258,23 @@ ${samples}
 
 Hoy: ${today}
 
-REGLAS:
-- Responde siempre en español.
+REGLAS ESTRICTAS:
+- Responde SIEMPRE en español.
 - Usa SOLO los nombres de columna reales del esquema.
-- Para tablas usa exactamente:
+- SIEMPRE que muestres datos tabulares, usá EXACTAMENTE este formato con los marcadores:
 <<<JSON>>>
 {"table":{"headers":["Col1","Col2"],"rows":[["v1","v2"]]}}
 <<<END>>>
-- Para métricas clave:
+- SIEMPRE que muestres métricas, usá EXACTAMENTE:
 <<<JSON>>>
-{"metrics":[{"label":"Etiqueta","value":"$1,000","sub":"detalle"}]}
+{"metrics":[{"label":"Etiqueta","value":"$1,000","sub":"detalle opcional"}]}
 <<<END>>>
-- Mezcla texto libre y bloques JSON libremente.
-- Usa **negrita** para destacar datos importantes.
-- Formatea montos con separadores de miles.`;
+- NUNCA uses bloques de código markdown (sin \`\`\`json).
+- NUNCA escribas el JSON sin los marcadores <<<JSON>>> y <<<END>>>.
+- Cuando la pregunta mencione un período (este mes, última semana, hoy, etc.), filtrá los datos por ese período usando las fechas reales de los datos.
+- Si la pregunta NO especifica período, aclaralo en la respuesta e incluí todos los datos.
+- Usa **negrita** para destacar datos importantes en el texto.
+- Formatea montos con separadores de miles y símbolo $ si aplica.`;
 
       const newHistory = [...history, { role:"user", content:question }];
       const resp = await fetch("/api/chat", {
