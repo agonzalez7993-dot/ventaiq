@@ -30,11 +30,13 @@ async function sbFetch(table, params = "limit=100") {
 }
 
 async function sbCount(table) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=id&limit=0`, {{
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&limit=1`, {
     headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, Accept: "application/json", Prefer: "count=exact" },
   });
-  const count = r.headers.get("content-range")?.split("/")[1];
-  return count ? parseInt(count) : "?";
+  const range = r.headers.get("content-range");
+  const total = range?.split("/")?.[1];
+  return total && total !== "*" ? parseInt(total) : "?";
+}
 }
 
 function tryParseBlock(jsonStr) {
