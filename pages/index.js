@@ -28,6 +28,15 @@ async function sbFetch(table, params = "limit=100") {
   if (!r.ok) throw new Error(`${table}: HTTP ${r.status}`);
   return r.json();
 }
+
+async function sbCount(table) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&limit=0`, {
+    headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, Accept: "application/json", Prefer: "count=exact" },
+  });
+  if (!r.ok) throw new Error(`${table}: HTTP ${r.status}`);
+  const count = r.headers.get("content-range");
+  if (count) return parseInt(count.split("/")[1]) || 0;
+  return 0;
 }
 
 function tryParseBlock(jsonStr) {
@@ -328,6 +337,7 @@ FORMATO OBLIGATORIO:
               <span style={{width:8,height:8,borderRadius:"50%",background:statusStyles.dot,display:"inline-block",boxShadow:connStatus==="ok"?"0 0 6px #a3e635":undefined}}/>
               <span style={{fontFamily:"'Syne Mono'",fontSize:11,color:"rgba(255,255,255,0.4)"}}>{statusStyles.text}</span>
             </div>
+            <a href="/stories" title="Story Generator" style={{fontFamily:"'Syne Mono'",fontSize:11,color:"rgba(255,255,255,0.4)",textDecoration:"none",padding:"5px 12px",borderRadius:7,border:"1px solid rgba(163,230,53,0.2)",background:"rgba(163,230,53,0.06)",transition:"all 0.2s"}}>Stories</a>
             <button onClick={()=>{setMessages([]);setHistory([]);}} title="Nueva conversación" style={{background:"none",border:"none",color:"rgba(255,255,255,0.35)",fontSize:18,cursor:"pointer",lineHeight:1}}>↺</button>
           </div>
         </header>
